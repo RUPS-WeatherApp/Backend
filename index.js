@@ -22,7 +22,8 @@ const apiOpenWeather = {
 }
 
 const apiAccuWeather = {
-    key: "evJqjQoI3glUTIMos9DlAuiPfszayhZy",
+    key: "6WocAdxr04HNMhEDlvPYkJePZR5RE3ms",
+    // key: "evJqjQoI3glUTIMos9DlAuiPfszayhZy",
     base: "http://dataservice.accuweather.com/currentconditions/v1/",
     baseCity: "http://dataservice.accuweather.com/locations/v1/cities/search"
 }
@@ -59,23 +60,34 @@ app.listen(5038, ()=>{
     });
 });
 
-async function resolceAllAPIs(cityName){
+const getCoordinates = async function(cityName) {
+    try {
+        const response = await axios.get(`${apiOpenWeather.base}weather?q=${cityName}&appid=${apiOpenWeather.key}&units=metric`);
+        console.log(response.data.coord);
+        return response.data.coord;
+    } catch (error) {
+        console.error("Could not find city", error);
+        return {lon: "15.63", lat: "46.55"};
+    }
+};
+
+
+async function resolceAllAPIs(cityName, lon = "15.63", lat = "46.55"){
     const tempArray = [];
     const humidityArray = [];
     const windSpeedArray = [];
     const windDegreeArray = [];
-    var lon = "15.63";
-    var lat = "46.55";
     var geoKey = "299438";
-    var weather = "";
-    try {
+    var weather = {};
+    var realCityName = "";
+    /*try {
         const rest = await axios.get(`${apiAccuWeather.baseCity}?apikey=${apiAccuWeather.key}&q=${cityName}&details=false`);
         lon = rest.data[0].GeoPosition.Longitude;
         lat = rest.data[0].GeoPosition.Latitude;
         geoKey = rest.data[0].Key;
     } catch (error) {
         console.log(error);
-    }
+    }*/
     
     try {
         const rest1 = await axios.get(`${apiOpenWeather.base}weather?q=${cityName}&appid=${apiOpenWeather.key}&units=metric`);
@@ -83,17 +95,19 @@ async function resolceAllAPIs(cityName){
         humidityArray.push(rest1.data.main.humidity);
         windSpeedArray.push(rest1.data.wind.speed);
         windDegreeArray.push(rest1.data.wind.deg);
+        weather = rest1.data.weather[0];
+        realCityName = rest1.data.name;
     } catch (error) {}
 
     
-    try {
+    /*try {
         const rest2 = await axios.get(`${apiAccuWeather.base}/${geoKey}?apikey=${apiAccuWeather.key}&details=true`);
         weather = rest2.data[0].WeatherText;
         tempArray.push(rest2.data[0].Temperature.Metric.Value);
         humidityArray.push(rest2.data[0].RelativeHumidity);
         windSpeedArray.push(rest2.data[0].Wind.Direction.Degrees);
         windDegreeArray.push(rest2.data[0].WindGust.Speed.Metric.Value);
-    } catch (error) {}
+    } catch (error) {}*/
 
     
     try {
@@ -149,11 +163,12 @@ async function resolceAllAPIs(cityName){
     const windDegree = windDegreeArray.reduce((accumulator3, currentValue3) => accumulator3 + currentValue3,
     0,) / windDegreeArray.length;
 
-    return {weather, temperature, humidity, windSpeed, windDegree};
+    return {weather, temperature, humidity, windSpeed, windDegree, cityName: realCityName};
 }
 
 app.get("/:cityName", async function(req, res){
-    const values = await resolceAllAPIs(req.params.cityName);
+    const {lon, lat} = await getCoordinates(req.params.cityName);
+    const values = await resolceAllAPIs(req.params.cityName, lon, lat);
     res.send(JSON.stringify(values));
 });
 
