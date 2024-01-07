@@ -1,13 +1,20 @@
-import Express from "express";
+import Express, { response } from "express";
 import cors from "cors";
 import https from "https";
 import http from'node:http';
 import axios from "axios";
 import fetch from 'node-fetch';
 import { Console } from "console";
+import cron from 'node-cron';
+import mongodb from 'mongodb';
+import multer from 'multer';
 
+
+
+var Mongoclient = mongodb.MongoClient;
 var app = Express();
 app.use(cors());
+  
 
 const apiOpenWeather = {
     key: "61f536c7ec3e62f7c4d43412de9977c8",
@@ -39,10 +46,17 @@ const apiWeatherApi = {
     base: "http://api.weatherapi.com/v1/current.json"
 }
 
+var CONNECTION_STRING = "mongodb+srv://admin:ucenec2023@cluster0.l9tmqsl.mongodb.net/?retryWrites=true&w=majority";
+
 var DATABASENAME = "weatherappdb"
 var database;
 
+
 app.listen(5038, ()=>{ 
+    Mongoclient.connect(CONNECTION_STRING, (error, client)=>{
+        database=client.db(DATABASENAME);
+        console.log("Database connection succesfull.");
+    });
 });
 
 async function resolceAllAPIs(cityName){
@@ -54,14 +68,14 @@ async function resolceAllAPIs(cityName){
     var lat = "46.55";
     var geoKey = "299438";
     var weather = "";
-    /*try {
+    try {
         const rest = await axios.get(`${apiAccuWeather.baseCity}?apikey=${apiAccuWeather.key}&q=${cityName}&details=false`);
         lon = rest.data[0].GeoPosition.Longitude;
         lat = rest.data[0].GeoPosition.Latitude;
         geoKey = rest.data[0].Key;
     } catch (error) {
         console.log(error);
-    }*/
+    }
     
     try {
         const rest1 = await axios.get(`${apiOpenWeather.base}weather?q=${cityName}&appid=${apiOpenWeather.key}&units=metric`);
@@ -72,14 +86,14 @@ async function resolceAllAPIs(cityName){
     } catch (error) {}
 
     
-    /*try {
+    try {
         const rest2 = await axios.get(`${apiAccuWeather.base}/${geoKey}?apikey=${apiAccuWeather.key}&details=true`);
         weather = rest2.data[0].WeatherText;
         tempArray.push(rest2.data[0].Temperature.Metric.Value);
         humidityArray.push(rest2.data[0].RelativeHumidity);
         windSpeedArray.push(rest2.data[0].Wind.Direction.Degrees);
         windDegreeArray.push(rest2.data[0].WindGust.Speed.Metric.Value);
-    } catch (error) {}*/
+    } catch (error) {}
 
     
     try {
@@ -142,3 +156,38 @@ app.get("/:cityName", async function(req, res){
     const values = await resolceAllAPIs(req.params.cityName);
     res.send(JSON.stringify(values));
 });
+
+app.get("/api/:cityName/:date", (req, res)=>{
+    database.collection("weatherappcollection").find({
+        "cityName": req.params.cityName,
+        "dateTime": req.params.date
+    }).toArray((error, result)=>{
+        res.send(result);
+    });
+});
+
+cron.schedule('0 1 * * *', async () => {
+    try {
+        const rest = await axios.get(`http://api.weatherapi.com/v1/forecast.json?key=${apiWeatherApi.key}&q=Maribor&aqi=yes`);
+        console.log(rest.data.forecast.forecastday[0].hour[0].condition.text);
+        console.log(rest.data.forecast.forecastday[0].hour[0].temp_c);
+        console.log(rest.data.forecast.forecastday[0].hour[0].humidity);
+        console.log(rest.data.forecast.forecastday[0].hour[0].wind_kph);
+        console.log(rest.data.forecast.forecastday[0].hour[0].wind_degree);
+        console.log(rest.data.forecast.forecastday[0].hour[0].time);
+
+        for(let i = 0; i < 24; i++){
+            database.collection("weatherappcollection").insertOne({
+                cityName:"Maribor",
+                weather: rest.data.forecast.forecastday[0].hour[i].condition.text,
+                temperature: rest.data.forecast.forecastday[0].hour[i].temp_c,
+                humidity: rest.data.forecast.forecastday[0].hour[i].humidity,
+                windSpeed: rest.data.forecast.forecastday[0].hour[i].wind_kph,
+                windDegree: rest.data.forecast.forecastday[0].hour[i].wind_degree,
+                dateTime: rest.data.forecast.forecastday[0].hour[i].time
+            });
+            console.log("Inserted succesfully")
+        }
+    } catch (error) {}
+    console.log('running a task every day');
+  });
